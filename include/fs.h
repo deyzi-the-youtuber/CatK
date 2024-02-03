@@ -46,4 +46,6 @@ void read_from_file(const struct FileSystem* fs, const char* filename, char* buf
 void read_last_line_from_file(const struct FileSystem* fs, const char* filename, char* buffer, size buffer_size);
 void add_data_to_file(struct FileSystem* fs, const char* filename, const char* additional_data);
 void change_directory(struct FileSystem* fs, const char* path);
+void vfs_init();
+
 #endif

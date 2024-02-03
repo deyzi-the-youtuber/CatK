@@ -1,8 +1,10 @@
 #ifndef KERNEL_H
 #define KERNEL_H
-#define PORT 0x3f8          // COM1
+
 #include "types.h"
 #include "timer.h"
+
+#define STACK_SIZE 4096
 
 typedef struct {
     void (*func)();

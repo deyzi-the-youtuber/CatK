@@ -1,44 +1,36 @@
-#include "console.h"
-#include "kernel.h"
-#include "libc.h"
-#include "string.h"
-#include "io_ports.h"
-#include "memory.h"
-#include "cpu.h"
-#include "fs.h"
-#include "time.h"
-#include "config.h"
-#include "keyboard.h"
-#include "usb.h"
-#include "sh.h"
-#include "helpdocs.h"
-#include "sysdiag.h"
-#include "devconfig.h"
-#include "exec.h"
-#include "panic.h"
-#include "PreBoot.h"
-#include "ide.h"
-#include "bitmap.h"
-#include "launchp.h"
-#include "interface.h"
-#include "process.h"
-#include "GDT.h"
-#include "IDT.h"
-#include "timer.h"
-#include "multiboot.h"
-#include "pmm.h"
-#include "vesa.h"
-#include "kheap.h"
-
-#define PORT 0x3f8          // COM1
- 
-#define STACK_SIZE 4096
-
-#define VGA_CRT_CTRL_REG 0x3D4
-#define VGA_CRT_DATA_REG 0x3D5
-
-#define VGA_CRT_CTRL_REG 0x3D4
-#define VGA_CRT_DATA_REG 0x3D5
+#include <console.h>
+#include <kernel.h>
+#include <libc.h>
+#include <string.h>
+#include <io_ports.h>
+#include <memory.h>
+#include <cpu.h>
+#include <fs.h>
+#include <time.h>
+#include <config.h>
+#include <keyboard.h>
+#include <usb.h>
+#include <sh.h>
+#include <helpdocs.h>
+#include <sysdiag.h>
+#include <devconfig.h>
+#include <exec.h>
+#include <panic.h>
+#include <PreBoot.h>
+#include <ide.h>
+#include <bitmap.h>
+#include <launchp.h>
+#include <interface.h>
+#include <process.h>
+#include <GDT.h>
+#include <IDT.h>
+#include <timer.h>
+#include <multiboot.h>
+#include <pmm.h>
+#include <vesa.h>
+#include <kheap.h>
+#include <serial.h>
+#include <fs.h>
 
 void bootart();
 
@@ -106,59 +98,11 @@ void display_kernel_memory_map(KERNEL_MEMORY_MAP *kmap) {
             kmap->available.start_addr, kmap->available.end_addr, kmap->available.size);
 }
 
-static int init_serial() {
-    k_printf("init_serial() on COM1\n");
-    outportb(PORT + 1, 0x00);    // Disable all interrupts
-    outportb(PORT + 3, 0x80);    // Enable DLAB (set baud rate divisor)
-    outportb(PORT + 0, 0x03);    // Set divisor to 3 (lo byte) 38400 baud
-    outportb(PORT + 1, 0x00);    //                  (hi byte)
-    outportb(PORT + 3, 0x03);    // 8 bits, no parity, one stop bit
-    outportb(PORT + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
-    outportb(PORT + 4, 0x0B);    // IRQs enabled, RTS/DSR set
-    outportb(PORT + 4, 0x1E);    // Set in loopback mode, test the serial chip
-    outportb(PORT + 0, 0xAE);    // Test serial chip (send byte 0xAE and check if serial returns same byte)
- 
-    // Check if serial is faulty (i.e: not same byte as sent)
-    if(inportb(PORT + 0) != 0xAE) {
-        return 1;
-    }
- 
-    // If serial is not faulty set it in normal operation mode
-    // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
-    outportb(PORT + 4, 0x0F);
-    return 0;
-}
-
-int is_transmit_empty() {
-   return inportb(PORT + 5) & 0x20;
-}
-
-void write_serial(const char* str) {
-   while (*str != '\0') {
-      while (is_transmit_empty() == 0);
-
-      if (*str == '\n') {
-         // Move to the beginning of the next line while staying at the same X position
-         outportb(PORT, '\r');  // Carriage return
-         while (is_transmit_empty() == 0);
-      }
-
-      outportb(PORT, *str);
-      str++;
-   }
-}
-
 void daemon(TIMER_FUNCTION function, uint32 timeout) {
     TIMER_FUNC_ARGS args = {0};
     args.timeout = timeout;
     timer_register_function(function, &args);
 }
-
-void pserial(const char* str) { // Use const char* for the string parameter
-    write_serial(str);
-    write_serial("\n");
-}
-
 
 extern void execute(Process *process); // Declaration for the assembly function
 
@@ -183,83 +127,6 @@ Process* fork(void (*func)(void)) {
     execute(child);
 
     return child;
-}
-
-
-
-
-void vfs_init()
-{
-    // Initialize the file table
-    for (size i = 0; i < MAX_FILES; ++i) {
-        rootfs.file_table[i].filename[0] = '\0';  // Empty filename indicates an unused entry
-    }
-
-    k_printf("Creating '/' structure\n");
-    create_folder(&rootfs, "bin", "/");
-    create_folder(&rootfs, "boot", "/");
-    create_folder(&rootfs, "cdrom", "/");
-    create_folder(&rootfs, "dev", "/");
-    create_folder(&rootfs, "etc", "/");
-    create_folder(&rootfs, "home", "/");
-    create_folder(&rootfs, "lib", "/");
-    create_folder(&rootfs, "media", "/");
-    create_folder(&rootfs, "mnt", "/");
-    create_folder(&rootfs, "mount", "/");
-    create_folder(&rootfs, "proc", "/");
-    create_folder(&rootfs, "run", "/");
-    create_folder(&rootfs, "sbin", "/");
-    create_folder(&rootfs, "sys", "/");
-    create_folder(&rootfs, "tmp", "/");
-    create_folder(&rootfs, "usr", "/");
-    create_folder(&rootfs, "var", "/");
-
-    create_folder(&rootfs, "ksh", "/etc");
-    create_folder(&rootfs, "bin", "/usr");
-    create_folder(&rootfs, "local", "/usr");
-    create_folder(&rootfs, "share", "/usr");
-
-    current_directory = "/etc";
-    write_to_file(&rootfs, "launchp", "");
-    add_data_to_file(&rootfs, "launchp", "sh\n");
-    k_printf("Dumping kernel values to /proc\n");
-    pserial("Dumping kernel values to /proc");
-    current_directory = "/proc";
-    write_to_file(&rootfs, "buff", buffer);
-    write_to_file(&rootfs, "buff-second", buffer2);
-    k_printf("Dumping apps to /bin\n");
-    pserial("Dumping apps to /bin");
-    current_directory = "/bin";
-    write_to_file(&rootfs, "print", "type:App\nprint");
-    write_to_file(&rootfs, "clear", "type:App\nclear");
-    write_to_file(&rootfs, "delay", "type:App\ndelay");
-    current_directory = "/sbin";
-    write_to_file(&rootfs, "sh", "type:App\nsh");
-    k_printf("Created /sbin/sh\n");
-    write_to_file(&rootfs, "shutdown", "type:App\nshutdown");
-    k_printf("Created /sbin/shutdown\n");
-    write_to_file(&rootfs, "reboot", "type:App\nreboot");
-    k_printf("Created /sbin/reboot\n");
-    k_printf("Setting hostname to defaults from 'defaulthostname'\n");
-    current_directory = "/etc";
-    write_to_file(&rootfs, "hostname", defaulthostname);
-    read_from_file(&rootfs, "hostname", buffer, sizeof(buffer), 1);
-    k_printf("Setting hostname to defaults from 'defaulthostname'\n");
-    current_directory = "/etc";
-    write_to_file(&rootfs, "hostname", defaulthostname);
-    read_from_file(&rootfs, "hostname", buffer, sizeof(buffer), 1);
-    strcpy(host_name, buffer);
-    k_printf("Copying kernel values to proc\n");
-    current_directory = "/proc";
-    write_to_file(&rootfs, "arch", arch);
-    write_to_file(&rootfs, "version", vername);
-    add_data_to_file(&rootfs, "version", versionnumber);
-    write_to_file(&rootfs, "versionnum", versionnumber);
-    write_to_file(&rootfs, "ostype", "Catkernel");
-    write_to_file(&rootfs, "cpu", brand);
-    write_to_file(&rootfs, "vga", "80x25");
-    current_directory = "/";
-    write_to_file(&rootfs, "desk", "type:App\ngraphics_init");
 }
 
 void makeroot()
@@ -314,7 +181,7 @@ void miscFSwrite()
     add_data_to_file(&rootfs, "issue", versionnumber);
 }
 
-void boot(unsigned long magic,  long addr) {
+void boot(uint32 magic, uint32 addr) {
 
     MULTIBOOT_INFO *mboot_info;      /* need this for multiboot. DONT REMOVE. */
     mboot_info = (MULTIBOOT_INFO *)addr;      /* DONT REMOVE EITHER */
@@ -347,7 +214,7 @@ void boot(unsigned long magic,  long addr) {
     makeroot();
     make_boot_env_var();
 
-    if (!fork(k_sh)) {    /* DONT CRASH VBOX you FAT FORKING FUCK. */
+    if (!fork(k_sh)) {    /* DONT CRASH VBOX you FAT FORKING FUCK. <- oooh he said no no word */
         panic("Yikes! Forking SHELL failed");
     }
 }

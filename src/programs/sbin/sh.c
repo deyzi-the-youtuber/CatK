@@ -14,6 +14,7 @@
 #include "exec.h"
 #include "fwrite.h"
 #include "process.h"
+#include <kittyfetch.h>
 
 #define MAX_BUFFER_SIZE 128
 int clearint = 0;
@@ -276,7 +277,12 @@ void execute_command(const char* command) {
             write_serial("\n");
             new_directory = 0;
         }
-    } else {
+    }
+    else if (strncmp(command, "kittyfetch", 10) == 0)
+    {
+        kittyfetch();
+    }
+    else {
         // Default action for unrecognized commands
         printf("%C -error- Unrecognized command.\n", 0xF, 0x0);
     }

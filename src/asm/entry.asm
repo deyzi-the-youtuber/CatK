@@ -28,16 +28,20 @@ stack_top:
 ; kernel entry, main text section
 section .text
     global _start
+    extern kmain
 
 
 ; define _start, aligned by linker.ld script
 _start:
+    ; set stack
     mov esp, stack_top
-    extern kmain
-    mov eax, MAGIC
+    ; reset flags
+    push 0
+    popf
+    ; push multiboot info
     push ebx
     push eax
     call kmain
-loop:
-    jmp loop
+system_halt:
+    jmp system_halt
 
